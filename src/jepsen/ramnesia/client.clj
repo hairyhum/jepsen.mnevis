@@ -1,7 +1,13 @@
-(ns jepsen.ramnesia-register-client
+(ns jepsen.ramnesia.client
   (:require [clj-http.client :as http-client])
   (:use [slingshot.slingshot :only [try+]]))
 
+(defn connect
+  "Ping a host"
+  [host]
+  (try+
+    (http-client/get (str host "/nokey"))
+    (catch [:status 404] _ nil)))
 
 (defn r
   "Read the key from ramnesia_register host"
