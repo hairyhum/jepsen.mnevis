@@ -7,6 +7,7 @@
                     [control :as c]
                     [db :as db]
                     [tests :as tests]
+                    [nemesis :as nemesis]
                     [generator :as gen]]
             [jepsen.ramnesia.client :as ramnesia]
             [jepsen.control.util :as cu]
@@ -41,7 +42,7 @@
 (defn node-name
   "Erlang nodename for ramnesia_register app"
   [node]
-  (str "ramnesia_listener@" node))
+  (str "rmns_listener@" node))
 
 (defn initial-cluster
   "Constructs an initial nodes list for a test"
@@ -60,10 +61,10 @@
       (c/su
         (let [url "https://s3-eu-west-1.amazonaws.com/rabbitmq-share/ramnesia_register_release-1.tar.gz"]
           (cu/install-archive! url dir))
-        (c/exec
-          :echo (str "[{ramnesia, [{initial_nodes, [" (initial-cluster test) "]}]}].")
-            ">" "releases/1/sys.config")
         (c/cd dir
+          (c/exec
+            :echo (str "[{ramnesia, [{initial_nodes, [" (initial-cluster test) "]}]}].")
+            :| :tee  "releases/1/sys.config")
           (c/exec "bin/ramnesia_register_release" "start"))
         (Thread/sleep 10000)))
 
@@ -71,7 +72,10 @@
       (info node "tearing down ramnesia")
       (c/cd dir
         (c/exec "bin/ramnesia_register_release" "stop"))
-      (c/su (c/exec :rm :-rf dir)))))
+      (c/su (c/exec :rm :-rf dir)))
+    db/LogFiles
+    (log-files [_ test node]
+      [(str dir "/log/erlang.log.1")])))
 
 (defn r   [_ _] {:type :invoke, :f :read, :value nil})
 (defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
@@ -87,12 +91,17 @@
           :os   debian/os
           :db   (db "nope")
           :client (Client. nil)
+          :nemesis    (nemesis/partition-random-halves)
           :model      (model/cas-register)
           :checker    (checker/linearizable)
-          :generator  (->> (gen/mix [r w cas])
-                           (gen/stagger 1)
-                           (gen/nemesis nil)
-                           (gen/time-limit 15))}))
+          :generator (->> (gen/mix [r w cas])
+                          (gen/stagger 1)
+                          (gen/nemesis
+                            (gen/seq (cycle [(gen/sleep 5)
+                                             {:type :info, :f :start}
+                                             (gen/sleep 5)
+                                             {:type :info, :f :stop}])))
+                          (gen/time-limit 30))}))
 
 (defn -main
   "Handles command line arguments. Can either run a test, or a web server for
