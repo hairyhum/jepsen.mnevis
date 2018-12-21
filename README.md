@@ -1,6 +1,6 @@
-# jepsen.ramnesia
+# jepsen.mnevis
 
-A Clojure library designed to ... well, that part is up to you.
+A jepsen test to verify mnevis (raft-based mnesia transactions).
 
 ## Usage
 

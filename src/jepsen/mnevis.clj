@@ -1,4 +1,4 @@
-(ns jepsen.ramnesia
+(ns jepsen.mnevis
   (:require [clojure.tools.logging :refer :all]
             [clojure.string :as str]
             [jepsen [checker :as checker]
@@ -9,29 +9,29 @@
                     [tests :as tests]
                     [nemesis :as nemesis]
                     [generator :as gen]]
-            [jepsen.ramnesia.client :as ramnesia]
+            [jepsen.mnevis.client :as mnevis]
             [jepsen.control.util :as cu]
             [knossos.model :as model]
             [jepsen.os.debian :as debian]))
 
-(def dir "/opt/ramnesia")
+(def dir "/opt/mnevis")
 
 (defrecord Client [conn]
   client/Client
   (open! [this test node]
     (let [host (str "http://" node ":8080")]
-      (ramnesia/connect host)
+      (mnevis/connect host)
       (assoc this :conn host)))
 
   (setup! [this test])
 
   (invoke! [this test op]
     (case (:f op)
-        :read (assoc op :type :ok, :value (ramnesia/r conn "foo"))
-        :write (do (ramnesia/w conn "foo" (:value op))
+        :read (assoc op :type :ok, :value (mnevis/r conn "foo"))
+        :write (do (mnevis/w conn "foo" (:value op))
                    (assoc op :type, :ok))
         :cas (let [[old new] (:value op)]
-               (assoc op :type (if (ramnesia/cas conn "foo" old new)
+               (assoc op :type (if (mnevis/cas conn "foo" old new)
                                  :ok
                                  :fail)))))
 
@@ -40,9 +40,9 @@
   (close! [_ test]))
 
 (defn node-name
-  "Erlang nodename for ramnesia_register app"
+  "Erlang nodename for mnevis_register app"
   [node]
-  (str "rmns_listener@" node))
+  (str "mnevis_listener@" node))
 
 (defn initial-cluster
   "Constructs an initial nodes list for a test"
@@ -57,21 +57,21 @@
   [_]
   (reify db/DB
     (setup! [_ test node]
-      (info node "installing ramnesia")
+      (info node "installing mnevis")
       (c/su
-        (let [url "https://s3-eu-west-1.amazonaws.com/rabbitmq-share/ramnesia_register_release-1.tar.gz"]
+        (let [url "https://s3-eu-west-1.amazonaws.com/rabbitmq-share/mnevis_register_release-1.tar.gz"]
           (cu/install-archive! url dir))
         (c/cd dir
           (c/exec
-            :echo (str "[{ramnesia, [{initial_nodes, [" (initial-cluster test) "]}]}].")
+            :echo (str "[{mnevis, [{initial_nodes, [" (initial-cluster test) "]}]}].")
             :| :tee  "releases/1/sys.config")
-          (c/exec "bin/ramnesia_register_release" "start"))
+          (c/exec "bin/mnevis_register_release" "start"))
         (Thread/sleep 10000)))
 
     (teardown! [_ test node]
-      (info node "tearing down ramnesia")
+      (info node "tearing down mnevis")
       (c/cd dir
-        (c/exec "bin/ramnesia_register_release" "stop"))
+        (c/exec "bin/mnevis_register_release" "stop"))
       (c/su (c/exec :rm :-rf dir)))
     db/LogFiles
     (log-files [_ test node]
@@ -81,13 +81,13 @@
 (defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
 (defn cas [_ _] {:type :invoke, :f :cas, :value [(rand-int 5) (rand-int 5)]})
 
-(defn ramnesia-test
+(defn mnevis-test
   "Given an options map from the command line runner (e.g. :nodes, :ssh,
   :concurrency, ...), constructs a test map."
   [opts]
   (merge tests/noop-test
          opts
-         {:name "ramnesia"
+         {:name "mnevis"
           :os   debian/os
           :db   (db "nope")
           :client (Client. nil)
@@ -107,5 +107,5 @@
   "Handles command line arguments. Can either run a test, or a web server for
   browsing results."
   [& args]
-  (cli/run! (cli/single-test-cmd {:test-fn ramnesia-test})
+  (cli/run! (cli/single-test-cmd {:test-fn mnevis-test})
             args))

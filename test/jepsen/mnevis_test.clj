@@ -1,6 +1,6 @@
-(ns jepsen.ramnesia-test
+(ns jepsen.mnevis-test
   (:require [clojure.test :refer :all]
-            [jepsen.ramnesia :refer :all]))
+            [jepsen.mnevis :refer :all]))
 
 (deftest a-test
   (testing "FIXME, I fail."
